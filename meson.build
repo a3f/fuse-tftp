@@ -6,4 +6,6 @@ tftp = executable('tftp', 'tftp_main.c', link_with: libtftp)
 
 libfuse3 = dependency('fuse3')
 
-executable('tftpfs', 'fuse.c', dependencies: libfuse3)
+fuse_src = [ 'fuse.c', 'glue.c' ]
+
+executable('tftpfs', fuse_src, dependencies: libfuse3, link_with: libtftp, install: true)
