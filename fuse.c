@@ -99,16 +99,7 @@ static int xmp_readlink(const char *path, char *buf, size_t size)
 static int xmp_create(const char *path, mode_t mode,
 		      struct fuse_file_info *fi)
 {
-	int fd;
-
-	/* TODO */
-
-	fd = open(path, fi->flags, mode);
-	if (fd == -1)
-		return -errno;
-
-	fi->fh = fd;
-	return 0;
+	return -EROFS;
 }
 
 static int xmp_open(const char *path, struct fuse_file_info *fi)
@@ -147,7 +138,7 @@ static int xmp_write(const char *path, const char *buf, size_t size,
 {
 	(void)path;
 
-	return xmp_xlate(pwrite(fi->fh, buf, size, offset));
+	return -EPERM;
 }
 
 static int xmp_release(const char *path, struct fuse_file_info *fi)
@@ -155,18 +146,6 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 	(void) path;
 
 	return xmp_xlate(close(fi->fh));
-}
-
-static int xmp_fsync(const char *path, int isdatasync,
-		     struct fuse_file_info *fi)
-{
-	/* Just a stub.	 This method is optional and can safely be left
-	   unimplemented */
-
-	(void) path;
-	(void) isdatasync;
-	(void) fi;
-	return 0;
 }
 
 static off_t xmp_lseek(const char *path, off_t off, int whence, struct fuse_file_info *fi)
@@ -185,7 +164,6 @@ static const struct fuse_operations xmp_oper = {
 	.read		= xmp_read,
 	.write		= xmp_write,
 	.release	= xmp_release,
-	.fsync		= xmp_fsync,
 	.lseek		= xmp_lseek,
 };
 
