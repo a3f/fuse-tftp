@@ -18,6 +18,7 @@
 #endif
 
 #include <fuse.h>
+#include <fuse_lowlevel.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -29,12 +30,22 @@
 
 #include "glue.h"
 
+static int basedirfd = AT_FDCWD;
+
 static inline int64_t xmp_xlate(int64_t ret)
 {
 	if (ret == -1)
 		return -errno;
 
 	return ret;
+}
+
+static inline const char *xlate_path(const char *path)
+{
+	while(*path == '/')
+		path++;
+
+	return *path ? path : ".";
 }
 
 static void *xmp_init(struct fuse_conn_info *conn,
@@ -63,7 +74,9 @@ static int xmp_getattr(const char *path, struct stat *stbuf,
 	(void) fi;
 	int ret;
 
-	ret = lstat(path, stbuf);
+	path = xlate_path(path);
+
+	ret = fstatat(basedirfd, path, stbuf, 0);
 	if (ret == 0)
 		return 0;
 
@@ -92,7 +105,9 @@ static int xmp_readlink(const char *path, char *buf, size_t size)
 {
 	int ret;
 
-	ret = readlink(path, buf, size - 1);
+	path = xlate_path(path);
+
+	ret = readlinkat(basedirfd, path, buf, size - 1);
 	if (ret >= 0) {
 		buf[ret] = '\0';
 		return 0;
@@ -118,7 +133,9 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 	if (fi->flags & O_WRONLY)
 		return -EROFS;
 
-	fd = open(path, fi->flags);
+	path = xlate_path(path);
+
+	fd = openat(basedirfd, path, fi->flags);
 	if (fd >= 0)
 		goto success;
 
@@ -178,7 +195,26 @@ static const struct fuse_operations xmp_oper = {
 
 int main(int argc, char *argv[])
 {
+	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+	struct fuse_cmdline_opts opts;
+
 	/* Don't mask creation mode, kernel already did that */
 	umask(0);
+
+	if (fuse_parse_cmdline(&args, &opts) != 0)
+		return 1;
+
+	fuse_opt_free_args(&args);
+
+	if(opts.mountpoint == NULL) {
+		printf("usage: TFTP_SERVER=<addr> %s [options] <mountpoint>\n", argv[0]);
+		printf("       %s --help\n", argv[0]);
+		return 1;
+	}
+
+	basedirfd = open(opts.mountpoint, O_DIRECTORY | O_RDONLY);
+	if (basedirfd < 0)
+		perror(opts.mountpoint);
+
 	return fuse_main(argc, argv, &xmp_oper, NULL);
 }
