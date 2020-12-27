@@ -20,6 +20,7 @@
 #include <fuse.h>
 #include <fuse_lowlevel.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -31,6 +32,7 @@
 #include "glue.h"
 
 static int basedirfd = AT_FDCWD;
+const char *tftpserv = "localhost";
 
 static inline int64_t xmp_xlate(int64_t ret)
 {
@@ -142,7 +144,7 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 	if (fd == -1 && errno != ENOENT)
 		return -errno;
 
-	fd = tftp_open(path);
+	fd = tftp_open(tftpserv, path);
 	if (fd < 0)
 		return fd;
 success:
@@ -197,6 +199,7 @@ int main(int argc, char *argv[])
 {
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 	struct fuse_cmdline_opts opts;
+	const char *envvar;
 
 	/* Don't mask creation mode, kernel already did that */
 	umask(0);
@@ -215,6 +218,10 @@ int main(int argc, char *argv[])
 	basedirfd = open(opts.mountpoint, O_DIRECTORY | O_RDONLY);
 	if (basedirfd < 0)
 		perror(opts.mountpoint);
+
+	envvar = getenv("TFTP_SERVER");
+	if (envvar)
+		tftpserv = envvar;
 
 	return fuse_main(argc, argv, &xmp_oper, NULL);
 }

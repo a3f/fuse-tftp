@@ -17,7 +17,7 @@
 #include "tftp.h"
 #include "glue.h"
 
-int tftp_open(const char *remote_path)
+int tftp_open(const char *tftpserv, const char *remote_path)
 {
 	char fname[] = "/tmp/tftp-fuse.XXXXXX";
 	int fd, ret;
@@ -28,7 +28,7 @@ int tftp_open(const char *remote_path)
 
 	unlink(fname);
 
-	ret = do_tftp("localhost", remote_path, fd, 0);
+	ret = do_tftp(tftpserv, remote_path, fd, 0);
 	if (ret < 0) {
 		close(fd);
 		return ret;
