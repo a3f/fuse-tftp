@@ -41,7 +41,7 @@ static void *xmp_init(struct fuse_conn_info *conn,
 		      struct fuse_config *cfg)
 {
 	(void) conn;
-	cfg->use_ino = 1;
+	cfg->use_ino = 0;
 
 	/* Pick up changes from lower filesystem right away. This is
 	   also necessary for better hardlink support. When the kernel
@@ -61,7 +61,7 @@ static int xmp_getattr(const char *path, struct stat *stbuf,
 		       struct fuse_file_info *fi)
 {
 	(void) fi;
-	int ret, fd;
+	int ret;
 
 	ret = lstat(path, stbuf);
 	if (ret == 0)
@@ -70,13 +70,22 @@ static int xmp_getattr(const char *path, struct stat *stbuf,
 	if (ret == -1 && errno != ENOENT)
 		return -errno;
 
-	fd = tftp_open(path);
-	if (fd < 0)
-		return fd;
+	/* You can always have TOCTOU if using stat to check
+	 * file existance before copying. So make this the norm
+	 * and just assume the file is always there
+	 */
 
-	ret = fstat(fd, stbuf);
-	close(fd);
-	return xmp_xlate(ret);
+	stbuf->st_mode = S_IFREG | 0444;
+	stbuf->st_nlink = 1;
+
+	/* TFTP doesn't allow querying file size without downloading.
+	 * So just assume file is 2G...
+	 * Well-behaving applications will stop on EOF.
+	 */
+
+	stbuf->st_size = 0x7fffffff;
+
+	return 0;
 }
 
 static int xmp_readlink(const char *path, char *buf, size_t size)
