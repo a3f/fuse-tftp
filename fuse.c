@@ -85,6 +85,10 @@ static int xmp_getattr(const char *path, struct stat *stbuf,
 	if (ret == -1 && errno != ENOENT)
 		return -errno;
 
+	ret = tftp_get_tsize(tftpserv, path);
+	if (ret < 0)
+		return ret;
+
 	/* You can always have TOCTOU if using stat to check
 	 * file existance before copying. So make this the norm
 	 * and just assume the file is always there
@@ -92,13 +96,7 @@ static int xmp_getattr(const char *path, struct stat *stbuf,
 
 	stbuf->st_mode = S_IFREG | 0444;
 	stbuf->st_nlink = 1;
-
-	/* TFTP doesn't allow querying file size without downloading.
-	 * So just assume file is 2G...
-	 * Well-behaving applications will stop on EOF.
-	 */
-
-	stbuf->st_size = 0x7fffffff;
+	stbuf->st_size = ret;
 
 	return 0;
 }

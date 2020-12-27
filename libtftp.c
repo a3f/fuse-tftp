@@ -103,6 +103,46 @@ static inline bool is_verbose(int flags)
 	return flags & TFTP_FLAG_VERBOSE;
 }
 
+static inline bool want_transfer_size(int flags)
+{
+	return flags & TFTP_FLAG_QUERY_TSIZE;
+}
+
+static char *tftp_get_option(const char *option, char *buf, int len)
+{
+	int opt_val = 0;
+	int opt_found = 0;
+	int k;
+
+	/* buf points to:
+	 * "opt_name<NUL>opt_val<NUL>opt_name2<NUL>opt_val2<NUL>..." */
+
+	while (len > 0) {
+		/* Make sure options are terminated correctly */
+		for (k = 0; k < len; k++) {
+			if (buf[k] == '\0') {
+				goto nul_found;
+			}
+		}
+		return NULL;
+ nul_found:
+		if (opt_val == 0) { /* it's "name" part */
+			if (strcasecmp(buf, option) == 0) {
+				opt_found = 1;
+			}
+		} else if (opt_found) {
+			return buf;
+		}
+
+		k++;
+		buf += k;
+		len -= k;
+		opt_val ^= 1;
+	}
+
+	return NULL;
+}
+
 #define G_error_pkt_reason (error_pkt.payload[3])
 #define G_error_pkt_str    ((char*)(error_pkt.payload + 4))
 
@@ -116,6 +156,7 @@ static int tftp_protocol(len_and_sockaddr *peer_lsa,
 	int send_len;
 	int ret;
 	bool finished = 0;
+	bool expect_OACK = 0;
 	uint16_t opcode;
 	uint16_t block_nr;
 	uint16_t recv_blk;
@@ -210,6 +251,22 @@ static int tftp_protocol(len_and_sockaddr *peer_lsa,
 	cp = stpcpy(cp, remote_file) + 1;
 	/* add "mode" part of the packet */
 	cp = stpcpy(cp, "octet") + 1;
+
+	if (want_transfer_size(flags)) {
+		/* Need to add option to pkt */
+		if ((&xbuf[io_bufsize - 1] - cp) < sizeof("blksize NNNNN tsize ") + sizeof(off_t)*3) {
+			fprintf(stderr, "remote filename is too long\n");
+			ret = -EIO;
+			goto close_socket;
+		}
+		expect_OACK = 1;
+
+		/* add "tsize", <nul>, size, <nul> (see RFC2349) */
+		strcpy(cp, "tsize");
+		cp += sizeof("tsize");
+		strcpy(cp, "0");
+		cp += sizeof("0");
+	}
 
 	/* First packet is built, so skip packet generation */
 	goto send_pkt;
@@ -329,6 +386,26 @@ recv_again:
 				ret = tftp_xlate_err(recv_blk);
 			}
 			fprintf(stderr, "server error: (%u) %s\n", recv_blk, msg);
+			if (ret == -EIO && want_transfer_size(flags))
+				ret = -EOPNOTSUPP;
+			goto close_socket;
+		}
+
+		if (expect_OACK) {
+			expect_OACK = 0;
+			ret = -EOPNOTSUPP;
+
+			if (opcode == TFTP_OACK) {
+				/* server seems to support options */
+				char *res;
+
+				res = tftp_get_option("tsize", &rbuf[2], len - 2);
+
+				if (res)
+					ret = strtoull(res, NULL, 10);
+			}
+
+			finished = 1;
 			goto close_socket;
 		}
 
@@ -380,8 +457,8 @@ free_bufs:
 	free(rbuf);
 	free(xbuf);
 
-	if (finished && !ret)
-		return 0;
+	if (finished && ret >= 0)
+		return ret;
 
 send_read_err_pkt:
 	strcpy(G_error_pkt_str, "read error");

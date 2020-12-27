@@ -14,6 +14,8 @@ The filesystem tries to resolve files in the underlying directory over which
 it was mounted. If that fails, it tries to fetch it over TFTP.
 
 Only read access is supported. Listing file isn't possible over TFTP.
+Requires the `tsize` (transmission size) extension to be supported by the
+server for `stat(2)` to work.
 
 ## Why?
 

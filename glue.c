@@ -36,3 +36,8 @@ int tftp_open(const char *tftpserv, const char *remote_path)
 
 	return fd;
 }
+
+int tftp_get_tsize(const char *tftpserv, const char *remote_path)
+{
+	return do_tftp(tftpserv, remote_path, -1, TFTP_FLAG_QUERY_TSIZE);
+}
